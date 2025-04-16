@@ -1,0 +1,25 @@
+{
+  "name": "skeeterdns",
+  "version": "0.0.1",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "dns2": "^2.1.0",
+    "mqtt": "^5.11.0",
+    "toml": "^3.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/dns2": "^2.0.9",
+    "@types/node": "^22.14.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
