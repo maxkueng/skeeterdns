@@ -16,6 +16,8 @@ export const configSchema = z.object({
     ttl: z.number().int().min(1).default(300),
     interface: z.string().ip(),
     port: z.number().int().min(1).max(65535),
+    fallbackDomains: z.array(z.string()).default([]),
+    fallbackAddress: z.string().ip().default('127.0.0.1'),
   }),
 });
 

@@ -38,6 +38,10 @@ function getSubdomainFromTopic(baseTopic: string, topic: string) {
 
 function start() {
   const records = new Map<string, DnsAnswer>();
+  const {
+    fallbackDomains,
+    fallbackAddress,
+  } = config.dns;
   const mqttTopic = `${config.mqtt.topicPrefix}/${config.dns.domain}`;
 
   const mqttClient = connect(config.mqtt.server, {
@@ -103,6 +107,22 @@ function start() {
     const record = records.get(name);
     if (record) {
       response.answers.push(record);
+    } else {
+      const matchedFallback = fallbackDomains.find((suffix) =>
+        name.endsWith(suffix)
+      );
+      
+      if (matchedFallback) {
+        console.log(`Fallback for ${name} -> ${fallbackAddress}`);
+        response.answers.push({
+          name,
+          type: Packet.TYPE.A,
+          class: Packet.CLASS.IN,
+          ttl: config.dns.ttl,
+          address: fallbackAddress,
+        });
+      }
+  
     }
 
     sendResponse(response);
