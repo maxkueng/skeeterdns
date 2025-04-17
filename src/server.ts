@@ -53,6 +53,22 @@ function start() {
     console.log('MQTT connected');
     mqttClient.subscribe(`${mqttTopic}/+`);
   });
+  
+  mqttClient.on('reconnect', () => {
+    console.log('Reconnecting to MQTT...');
+  });
+  
+  mqttClient.on('close', () => {
+    console.log('MQTT connection closed');
+  });
+  
+  mqttClient.on('error', (err) => {
+    console.error('MQTT error:', err);
+  });
+  
+  mqttClient.on('offline', () => {
+    console.warn('MQTT is offline');
+  });
 
   mqttClient.on('message', (topic: string, message: Buffer) => {
     const subdomain = getSubdomainFromTopic(mqttTopic, topic);
