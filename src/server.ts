@@ -20,6 +20,16 @@ import { connect } from 'mqtt';
 import { z } from 'zod';
 
 import type { Config } from './config';
+import {
+  register,
+  startTimeGauge,
+  dnsRequestCounter,
+  dnsAnswerCounter,
+  dnsFallbackAnswerCounter,
+  dnsNotFoundCounter,
+  mqttEventCounter,
+  mqttPayloadErrorCounter,
+} from './metrics';
 
 const recordSchema = z.object({
   type: z.enum(['A', 'CNAME', 'TXT']),
@@ -32,6 +42,19 @@ type DnsRecord = z.infer<typeof recordSchema>;
 type ErrorResponse = {
   error: string;
 };
+
+function getRecordTypeName(type: number) {
+  switch (type) {
+    case Packet.TYPE.A:
+      return 'A';
+    case Packet.TYPE.CNAME:
+      return 'CNAME';
+    case Packet.TYPE.TXT:
+      return 'TXT';
+    default:
+      return 'UNKNOWN';
+  }
+}
 
 function getSubdomainFromTopic(baseTopic: string, topic: string) {
   if (topic.startsWith(`${baseTopic}/`)) {
@@ -70,6 +93,8 @@ function createHttpServer(config: Config, requestListener: RequestListener) {
 }
 
 export function startServer(config: Config) {
+  startTimeGauge.setToCurrentTime();
+
   const records = new Map<string, DnsAnswer>();
   const {
     fallbackDomains,
@@ -88,32 +113,39 @@ export function startServer(config: Config) {
 
   mqttClient.on('connect', () => {
     console.info('MQTT connected');
+    mqttEventCounter.inc({ event: 'connect' });
     mqttClient.subscribe(`${mqttTopic}/+`);
   });
   
   mqttClient.on('reconnect', () => {
+    mqttEventCounter.inc({ event: 'reconnect' });
     if (config.debug) {
       console.log('Reconnecting to MQTT...');
     }
   });
   
   mqttClient.on('close', () => {
+    mqttEventCounter.inc({ event: 'close' });
     if (config.debug) {
       console.log('MQTT connection closed');
     }
   });
   
   mqttClient.on('error', (err) => {
+    mqttEventCounter.inc({ event: 'error' });
     console.error('MQTT error:', err);
   });
   
   mqttClient.on('offline', () => {
+    mqttEventCounter.inc({ event: 'offline' });
     if (config.debug) {
       console.warn('MQTT is offline');
     }
   });
 
   mqttClient.on('message', (topic: string, message: Buffer) => {
+    mqttEventCounter.inc({ event: 'message' });
+
     const subdomain = getSubdomainFromTopic(mqttTopic, topic);
     if (!subdomain) {
       return;
@@ -145,11 +177,14 @@ export function startServer(config: Config) {
         }
       }
     } catch (err) {
+      mqttPayloadErrorCounter.inc();
       console.error('Invalid JSON payload:', err);
     }
   });
 
   const handleDnsRequest: DnsHandler = (request, sendResponse) => {
+    dnsRequestCounter.inc();
+
     const response = Packet.createResponseFromRequest(request);
     const [question] = request.questions;
     const { name } = question;
@@ -157,6 +192,10 @@ export function startServer(config: Config) {
     const record = records.get(name);
     if (record) {
       response.answers.push(record);
+
+      dnsAnswerCounter.inc({
+        type: getRecordTypeName(record.type),
+      })
     } else {
       const matchedFallback = fallbackDomains.find((suffix) =>
         name.endsWith(suffix)
@@ -173,8 +212,19 @@ export function startServer(config: Config) {
           ttl: config.dns.ttl,
           address: fallbackAddress,
         });
+
+        dnsFallbackAnswerCounter.inc({
+          type: getRecordTypeName(Packet.TYPE.A),
+        })
       }
     }
+    
+    if (response.answers.length === 0) {
+      dnsNotFoundCounter.inc({
+        fqdn: question.name,
+      });
+    }
+
     sendResponse(response);
   };
 
@@ -197,6 +247,41 @@ export function startServer(config: Config) {
   app.use(cors({
     origin: '*',
   }));
+  
+  app.get('/metrics', async (_req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  });
+  
+  app.get(['/livez', '/healthz'], (_req, res) => {
+    res.sendStatus(StatusCodes.OK);
+  });
+  
+  app.get('/readyz', async (req, res) => {
+    const isMqttConnected = mqttClient.connected;
+    
+    if (isMqttConnected) {
+      if ('verbose' in req.query) {
+        res.status(StatusCodes.OK).type('text/plain').send(
+          `[#] MQTT check: ok` +
+          `    using server ${config.mqtt.server}` +
+          `    MQTT connected`
+        );
+      } else {
+        res.sendStatus(StatusCodes.OK);
+      }
+    } else {
+      if ('verbose' in req.query) {
+        res.status(StatusCodes.SERVICE_UNAVAILABLE).type('text/plain').send(
+          `[#] MQTT check: failed` +
+          `    using server ${config.mqtt.server}` +
+          `    MQTT not connected`
+        );
+      } else {
+        res.sendStatus(StatusCodes.SERVICE_UNAVAILABLE);
+      }
+    }
+  })
 
   app.get(
     '/records',
