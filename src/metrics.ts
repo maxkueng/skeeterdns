@@ -4,8 +4,6 @@ import {
   register,
 } from 'prom-client';
 
-import client from 'prom-client';
-
 export { register };
 
 export const startTimeGauge = new Gauge({
