@@ -39,10 +39,6 @@ const recordSchema = z.object({
 
 type DnsRecord = z.infer<typeof recordSchema>;
 
-type ErrorResponse = {
-  error: string;
-};
-
 function getRecordTypeName(type: number) {
   switch (type) {
     case Packet.TYPE.A:
