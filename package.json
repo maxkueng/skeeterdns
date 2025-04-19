@@ -1,24 +1,32 @@
 {
   "name": "skeeterdns",
   "version": "0.0.1",
-  "main": "dist/server.js",
+  "main": "dist/cli.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/cli.js"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "description": "",
   "dependencies": {
+    "cors": "^2.8.5",
     "dns2": "^2.1.0",
+    "express": "^5.1.0",
+    "express-zod-safe": "^1.4.0",
+    "http-status-codes": "^2.3.0",
     "mqtt": "^5.11.0",
     "toml": "^3.0.0",
+    "yargs": "^17.7.2",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/dns2": "^2.0.9",
+    "@types/express": "^5.0.1",
     "@types/node": "^22.14.1",
+    "@types/yargs": "^17.0.33",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
