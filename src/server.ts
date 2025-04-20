@@ -18,6 +18,8 @@ import type {
 } from 'dns2';
 import { connect } from 'mqtt';
 import { z } from 'zod';
+import pino from 'pino';
+import pinoPretty from 'pino-pretty';
 
 import type { Config } from './config';
 import {
@@ -30,6 +32,10 @@ import {
   mqttEventCounter,
   mqttPayloadErrorCounter,
 } from './metrics';
+
+const logger = pino(pinoPretty({
+  colorize: false,
+}));
 
 const recordSchema = z.object({
   type: z.enum(['A', 'CNAME', 'TXT']),
@@ -90,6 +96,10 @@ function createHttpServer(config: Config, requestListener: RequestListener) {
 
 export function startServer(config: Config) {
   startTimeGauge.setToCurrentTime();
+  
+  if (config.debug) {
+    logger.level = 'debug';
+  }
 
   const records = new Map<string, DnsAnswer>();
   const {
@@ -108,35 +118,29 @@ export function startServer(config: Config) {
   });
 
   mqttClient.on('connect', () => {
-    console.info('MQTT connected');
+    logger.info('MQTT connected');
     mqttEventCounter.inc({ event: 'connect' });
     mqttClient.subscribe(`${mqttTopic}/+`);
   });
   
   mqttClient.on('reconnect', () => {
     mqttEventCounter.inc({ event: 'reconnect' });
-    if (config.debug) {
-      console.log('Reconnecting to MQTT...');
-    }
+    logger.info('Reconnecting to MQTT...');
   });
   
   mqttClient.on('close', () => {
     mqttEventCounter.inc({ event: 'close' });
-    if (config.debug) {
-      console.log('MQTT connection closed');
-    }
+    logger.info('MQTT connection closed');
   });
   
   mqttClient.on('error', (err) => {
     mqttEventCounter.inc({ event: 'error' });
-    console.error('MQTT error:', err);
+    logger.error('MQTT error:', err);
   });
   
   mqttClient.on('offline', () => {
     mqttEventCounter.inc({ event: 'offline' });
-    if (config.debug) {
-      console.warn('MQTT is offline');
-    }
+    logger.warn('MQTT is offline');
   });
 
   mqttClient.on('message', (topic: string, message: Buffer) => {
@@ -152,9 +156,7 @@ export function startServer(config: Config) {
     
     if (messageString === '') {
       records.delete(fqdn);
-      if (config.debug) {
-        console.log(`Delete record ${fqdn}`);
-      }
+      logger.info(`Delete record ${fqdn}`);
       return;
     }
 
@@ -168,13 +170,11 @@ export function startServer(config: Config) {
           ttl: payload.ttl ?? config.dns.ttl,
           domain: payload.value,
         });
-        if (config.debug) {
-          console.log(`Set ${fqdn} -> CNAME ${payload.value}`);
-        }
+        logger.info(`Set ${fqdn} -> CNAME ${payload.value}`);
       }
     } catch (err) {
       mqttPayloadErrorCounter.inc();
-      console.error('Invalid JSON payload:', err);
+      logger.error('Invalid JSON payload:', err);
     }
   });
 
@@ -198,9 +198,7 @@ export function startServer(config: Config) {
       );
       
       if (matchedFallback) {
-        if (config.debug) {
-          console.log(`Fallback for ${name} -> ${fallbackAddress}`);
-        }
+        logger.debug(`Fallback for ${name} -> ${fallbackAddress}`);
         response.answers.push({
           name,
           type: Packet.TYPE.A,
@@ -311,9 +309,7 @@ export function startServer(config: Config) {
         }),
         { retain: true },
       );
-      if (config.debug) {
-        console.log(`MQTT published: ${fqdn} -> CNAME ${payload.value}`);
-      }
+      logger.debug(`MQTT published: ${fqdn} -> CNAME ${payload.value}`);
       res.status(StatusCodes.CREATED).send();
     },
   );
@@ -350,9 +346,7 @@ export function startServer(config: Config) {
       const fqdn = `${subdomain}.${config.dns.domain}`;
 
       mqttClient.publish(`${mqttTopic}/${subdomain}`, JSON.stringify(payload), { retain: true });
-      if (config.debug) {
-        console.log(`MQTT published: ${fqdn} -> CNAME ${payload.value}`);
-      }
+      logger.debug(`MQTT published: ${fqdn} -> CNAME ${payload.value}`);
       res.status(StatusCodes.CREATED).send();
     },
   );
@@ -368,9 +362,7 @@ export function startServer(config: Config) {
     const subdomain = req.params.subdomain;
     const fqdn = `${subdomain}.${config.dns.domain}`;
     mqttClient.publish(`${mqttTopic}/${subdomain}`, '', { retain: true });
-    if (config.debug) {
-      console.log(`MQTT delete published: ${fqdn}`);
-    }
+    logger.debug(`MQTT delete published: ${fqdn}`);
     res.status(StatusCodes.NO_CONTENT).send();
     },
   );
@@ -383,12 +375,12 @@ export function startServer(config: Config) {
     const host = config.api.address;
     const apiUrl = `${protocol}://${host}:${httpPort}`;
 
-    console.info('SkeeterDNS started');
-    console.info(`API listening on ${apiUrl}`);
-    console.info(`DNS listening on ${config.dns.address}:${config.dns.port} (UDP)`);
-    console.info(`MQTT broker: ${config.mqtt.server}`);
+    logger.info('SkeeterDNS started');
+    logger.info(`API listening on ${apiUrl}`);
+    logger.info(`DNS listening on ${config.dns.address}:${config.dns.port} (UDP)`);
+    logger.info(`MQTT broker: ${config.mqtt.server}`);
     if (config.debug) {
-      console.info('Debug mode is enabled');
+      logger.info('Debug mode is enabled');
     }
   });
 
