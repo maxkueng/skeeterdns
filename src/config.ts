@@ -22,10 +22,10 @@ export const configSchema = z.object({
 
   mqtt: z.object({
     server: z.string().url(),
-    user: z.string(),
-    password: z.string(),
+    user: z.string().optional(),
+    password: z.string().optional(),
     topicPrefix: z.string().default('dns'),
-    clientId: z.string(),
+    clientId: z.string().optional(),
   }),
 
   dns: z.object({
