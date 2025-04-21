@@ -18,8 +18,7 @@ import type {
 } from 'dns2';
 import { connect } from 'mqtt';
 import { z } from 'zod';
-import pino from 'pino';
-import pinoPretty from 'pino-pretty';
+import type { Logger } from 'pino';
 
 import type { Config } from './config';
 import {
@@ -32,10 +31,6 @@ import {
   mqttEventCounter,
   mqttPayloadErrorCounter,
 } from './metrics';
-
-const logger = pino(pinoPretty({
-  colorize: false,
-}));
 
 const recordSchema = z.object({
   type: z.enum(['A', 'CNAME', 'TXT']),
@@ -94,7 +89,7 @@ function createHttpServer(config: Config, requestListener: RequestListener) {
   return http.createServer(requestListener);
 }
 
-export function startServer(config: Config) {
+export function startServer(config: Config, logger: Logger) {
   startTimeGauge.setToCurrentTime();
   
   if (config.debug) {
